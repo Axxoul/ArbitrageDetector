@@ -7,6 +7,7 @@
         <option value="organizeImports" />
         <option value="reformat" />
         <option value="rearrange" />
+        <option value="reload" />
       </set>
     </option>
     <option name="configurationPath" value="" />

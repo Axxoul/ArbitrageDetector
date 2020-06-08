@@ -6,7 +6,7 @@ import java.math.BigDecimal;
 import java.util.Objects;
 
 public class Profitability {
-    public static final BigDecimal PROFITABILITY_THRESHOLD = new BigDecimal("1.01");
+    public static final BigDecimal PROFITABILITY_THRESHOLD = new BigDecimal("1.001");
     public final GraphPath<String, Market> path;
     private BigDecimal profitability;
 
