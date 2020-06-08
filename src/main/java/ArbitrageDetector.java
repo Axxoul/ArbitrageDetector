@@ -5,35 +5,32 @@ import com.github.jnidzwetzki.bitfinex.v2.entity.currency.BitfinexCurrencyPair;
 import com.github.jnidzwetzki.bitfinex.v2.manager.QuoteManager;
 import com.github.jnidzwetzki.bitfinex.v2.symbol.BitfinexSymbols;
 import com.github.jnidzwetzki.bitfinex.v2.symbol.BitfinexTickerSymbol;
-import org.jgrapht.Graph;
-import org.jgrapht.alg.cycle.StackBFSFundamentalCycleBasis;
-import org.jgrapht.graph.DirectedPseudograph;
-
+import model.Market;
 import java.math.BigDecimal;
-import java.util.Set;
-
-import static com.google.common.collect.Iterators.find;
+import java.math.RoundingMode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ArbitrageDetector {
-    public static final String BITFINEX = "bitfinex";
-
-    private static Graph<String, Market> graph;
+    private static final Logger LOGGER = LoggerFactory.getLogger(ArbitrageDetector.class);
+    private static ExchangeRates exchangeRates;
 
     public static void main(String[] args) {
-        graph = new DirectedPseudograph<>(Market.class);
+        exchangeRates = new ExchangeRates();
 
         BitfinexCurrencyPair.registerDefaults();
         final BitfinexWebsocketClient client = BitfinexClientFactory.newSimpleClient();
         client.connect();
 
-        watchInstrument(client, "BTC");
-        watchInstrument(client, "ETH");
+        watchInstrument(client, "BTC", "USD");
+        watchInstrument(client, "ETH", "USD");
+        watchInstrument(client, "ETH", "BTC");
     }
 
-    private static void watchInstrument(BitfinexWebsocketClient client, String instrument) {
+    private static void watchInstrument(BitfinexWebsocketClient client, String instrument1, String instrument2) {
         final QuoteManager quoteManager = client.getQuoteManager();
         final BitfinexTickerSymbol symbol = BitfinexSymbols.ticker(
-                BitfinexCurrencyPair.of(instrument, "USD")
+                BitfinexCurrencyPair.of(instrument1, instrument2)
         );
 
         quoteManager.registerTickCallback(symbol, ArbitrageDetector::handleTick);
@@ -41,53 +38,33 @@ public class ArbitrageDetector {
     }
 
     private static void handleTick(BitfinexTickerSymbol symbol, BitfinexTick tick) {
-        System.out.format("[%s] (bid: %s, ask: %s, spread: %s)\n", symbol.getCurrency(), tick.getBid(), tick.getAsk(), tick.getAsk().subtract(tick.getBid()));
-        String[] currencies = symbol.getCurrency().toString().split(":");
-        String from = currencies[0];
-        String to = currencies[1];
-
-        setEdge(from, to, tick.getBid()); // Bid vs ask?
-        setEdge(to, from, tick.getAsk());
-
-        detectArbitrage();
-    }
-
-    private static void detectArbitrage() {
-        // FIXME nie działa gówno
-        new StackBFSFundamentalCycleBasis<>(graph)
-                .getCycleBasis()
-                .getCyclesAsGraphPaths()
-                .stream()
-                .map(path -> new Profitability(graph, path))
-                .filter(prof -> prof.isProfitable(graph))
-//                .sorted(); // TODO pick the best one
-                .forEach(Profitability::report);
-    }
+        try {
+            LOGGER.info(String.format("[%s] (bid: %s, ask: %s, spread: %s)",
+                    symbol.getCurrency(),
+                    tick.getBid(),
+                    tick.getAsk(),
+                    tick.getAsk().subtract(tick.getBid())
+            ));
+            String[] currencies = symbol.getCurrency().toString().split(":");
+            String from = currencies[0];
+            String to = currencies[1];
 
 
-    private static void setEdge(String from, String to, BigDecimal rate) {
-        Set<Market> markets = graph.getAllEdges(from, to);
+            BigDecimal rate = tick.getBid();
+            BigDecimal reverseRate = new BigDecimal(1).divide(tick.getAsk(), 100, RoundingMode.HALF_DOWN);
 
-        Market market = null;
-        if (markets != null) {
-            market = find(
-                    markets.iterator(),
-                    (Market mark) -> {
-                        assert mark != null;
-                        return mark.exchange.equals(BITFINEX);
-                    },
-                    null
+            LOGGER.debug(String.format("spread rate: %s",
+                    Constants.DF.format(new BigDecimal(1).subtract(rate.multiply(reverseRate)).multiply(new BigDecimal(100))))
             );
+
+            exchangeRates.updateSecurity(new Market(from, to, Constants.BITFINEX).setRate(rate)); // Bid vs ask?
+            exchangeRates.updateSecurity(new Market(to, from, Constants.BITFINEX).setRate(reverseRate)); // Bid vs ask?
+
+            exchangeRates.detectArbitrage();
+        } catch (Exception e) {
+            LOGGER.error(e.getMessage(), e);
         }
-
-        if (market == null) {
-            market = new Market(from, to, BITFINEX);
-
-            if (!graph.containsVertex(from)) graph.addVertex(from);
-            if (!graph.containsVertex(to)) graph.addVertex(to);
-
-            graph.addEdge(from, to, market);
-        }
-        market.setRate(rate);
     }
+
+
 }

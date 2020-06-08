@@ -1,3 +1,5 @@
+package model;
+
 import java.math.BigDecimal;
 import java.text.NumberFormat;
 
@@ -13,6 +15,10 @@ public class Market {
         this.exchange = exchange;
     }
 
+    public BigDecimal getRate() {
+        return rate;
+    }
+
     public Market setRate(BigDecimal rate) {
         this.rate = rate;
         return this;
@@ -21,7 +27,7 @@ public class Market {
     @Override
     public String toString() {
 
-        return "Market{" +
+        return "model.Market{" +
                 "from='" + from + '\'' +
                 ", to='" + to + '\'' +
                 ", exchange='" + exchange + '\'' +
