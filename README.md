@@ -1,4 +1,4 @@
-# ArbitrageDetector
+# dev.natsoft.arbitrage.ArbitrageDetector
 
 todo readme
 

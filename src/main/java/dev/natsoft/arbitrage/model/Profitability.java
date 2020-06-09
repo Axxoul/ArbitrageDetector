@@ -1,4 +1,4 @@
-package model;
+package dev.natsoft.arbitrage.model;
 
 import org.jgrapht.GraphPath;
 
@@ -34,6 +34,6 @@ public class Profitability {
 
     @Override
     public String toString() {
-        return "model.Profitability{profit: " + this.getProfitability() + ", path:" + this.path + "}";
+        return "dev.natsoft.arbitrage.model.Profitability{profit: " + this.getProfitability() + ", path:" + this.path + "}";
     }
 }

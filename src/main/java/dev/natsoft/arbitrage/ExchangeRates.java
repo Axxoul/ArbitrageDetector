@@ -1,6 +1,8 @@
+package dev.natsoft.arbitrage;
+
 import ch.obermuhlner.math.big.BigDecimalMath;
-import model.Market;
-import model.Profitability;
+import dev.natsoft.arbitrage.model.Market;
+import dev.natsoft.arbitrage.model.Profitability;
 import org.jgrapht.Graph;
 import org.jgrapht.GraphPath;
 import org.jgrapht.alg.shortestpath.BellmanFordShortestPath;
@@ -23,16 +25,23 @@ import static com.google.common.collect.Iterators.find;
 public class ExchangeRates {
     private static final Logger LOGGER = LoggerFactory.getLogger(ExchangeRates.class);
     private static Graph<String, Market> exchangeRates;
-    private final ReentrantLock lock;
+    private final ReentrantLock graphLock;
 
     public ExchangeRates() {
         exchangeRates = new DefaultDirectedWeightedGraph<>(Market.class);
-        lock = new ReentrantLock();
+        graphLock = new ReentrantLock();
+
+        new Timer().scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                detectArbitrage();
+            }
+        }, 0, 5000);
     }
 
 
     public void updateSecurity(Market rate) {
-        lock.lock();
+        graphLock.lock();
         Set<Market> markets = exchangeRates.getAllEdges(rate.from, rate.to);
 
         Market market = null;
@@ -65,11 +74,12 @@ public class ExchangeRates {
                 .doubleValue();
 
         exchangeRates.setEdgeWeight(rate.from, rate.to, weight);
-        lock.unlock();
+        graphLock.unlock();
     }
 
     public void detectArbitrage() {
-        lock.lock();
+        graphLock.lock();
+
         exchangeRates
                 .vertexSet()
                 .stream()
@@ -79,7 +89,8 @@ public class ExchangeRates {
                 .filter(Profitability::meetsThreshold)
                 .max(Comparator.comparing(Profitability::getProfitability))
                 .ifPresent(this::report);
-        lock.unlock();
+
+        graphLock.unlock();
     }
 
     private boolean isOwned(String s) {

@@ -1,4 +1,4 @@
-package model;
+package dev.natsoft.arbitrage.model;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
@@ -27,7 +27,7 @@ public class Market {
     @Override
     public String toString() {
 
-        return "model.Market{" +
+        return "dev.natsoft.arbitrage.model.Market{" +
                 "from='" + from + '\'' +
                 ", to='" + to + '\'' +
                 ", exchange='" + exchange + '\'' +

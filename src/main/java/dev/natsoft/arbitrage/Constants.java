@@ -1,3 +1,5 @@
+package dev.natsoft.arbitrage;
+
 import java.text.DecimalFormat;
 
 public class Constants {

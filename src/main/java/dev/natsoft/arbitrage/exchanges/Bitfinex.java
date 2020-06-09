@@ -1,3 +1,5 @@
+package dev.natsoft.arbitrage.exchanges;
+
 import com.github.jnidzwetzki.bitfinex.v2.BitfinexClientFactory;
 import com.github.jnidzwetzki.bitfinex.v2.BitfinexWebsocketClient;
 import com.github.jnidzwetzki.bitfinex.v2.entity.BitfinexTick;
@@ -5,34 +7,31 @@ import com.github.jnidzwetzki.bitfinex.v2.entity.currency.BitfinexCurrencyPair;
 import com.github.jnidzwetzki.bitfinex.v2.manager.QuoteManager;
 import com.github.jnidzwetzki.bitfinex.v2.symbol.BitfinexSymbols;
 import com.github.jnidzwetzki.bitfinex.v2.symbol.BitfinexTickerSymbol;
-import model.Market;
+import dev.natsoft.arbitrage.ArbitrageDetector;
+import dev.natsoft.arbitrage.Constants;
+import dev.natsoft.arbitrage.ExchangeRates;
+import dev.natsoft.arbitrage.model.Market;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.Timer;
-import java.util.TimerTask;
 
-public class ArbitrageDetector {
+public class Bitfinex implements Exchange {
     private static final Logger LOGGER = LoggerFactory.getLogger(ArbitrageDetector.class);
-    private static ExchangeRates exchangeRates;
-    private static BitfinexWebsocketClient client;
+    private BitfinexWebsocketClient client;
+    private ExchangeRates exchangeRates;
 
-    public static void main(String[] args) {
-        exchangeRates = new ExchangeRates();
 
+    @Override
+    public void startUpdating(ExchangeRates exchangeRates) {
+        this.exchangeRates = exchangeRates;
+
+        // TODO pooled client?
         BitfinexCurrencyPair.registerDefaults();
-
         client = BitfinexClientFactory.newSimpleClient();
         client.connect();
 
-        new Timer().scheduleAtFixedRate(new TimerTask(){
-            @Override
-            public void run(){
-                exchangeRates.detectArbitrage();
-            }
-        },0,5000);
 
         // Todo gracefully Pool and get
         for (BitfinexCurrencyPair pair : BitfinexCurrencyPair.values()) {
@@ -44,17 +43,18 @@ public class ArbitrageDetector {
                 e.printStackTrace();
             }
         }
+
     }
 
-    private static void watchInstrument(BitfinexWebsocketClient client, BitfinexCurrencyPair pair) {
+    private void watchInstrument(BitfinexWebsocketClient client, BitfinexCurrencyPair pair) {
         final QuoteManager quoteManager = client.getQuoteManager();
         final BitfinexTickerSymbol symbol = BitfinexSymbols.ticker(pair);
 
-        quoteManager.registerTickCallback(symbol, ArbitrageDetector::handleTick);
+        quoteManager.registerTickCallback(symbol, this::handleTick);
         quoteManager.subscribeTicker(symbol);
     }
 
-    private static void handleTick(BitfinexTickerSymbol symbol, BitfinexTick tick) {
+    private void handleTick(BitfinexTickerSymbol symbol, BitfinexTick tick) {
         try {
             BigDecimal vol = tick.getVolume();
             BigDecimal rate = tick.getBid();
@@ -85,10 +85,10 @@ public class ArbitrageDetector {
 
             exchangeRates.updateSecurity(new Market(from, to, Constants.BITFINEX).setRate(rate)); // Bid vs ask?
             exchangeRates.updateSecurity(new Market(to, from, Constants.BITFINEX).setRate(reverseRate)); // Bid vs ask?
+
         } catch (Exception e) {
             LOGGER.error(e.getMessage(), e);
         }
     }
-
 
 }
