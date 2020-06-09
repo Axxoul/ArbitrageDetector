@@ -24,7 +24,7 @@ public class Profitability {
         if (profitability == null) {
             profitability = path.getEdgeList()
                     .stream()
-                    .map(Market::getRate)
+                    .map(Market::getRateWithFees)
                     .reduce(BigDecimal::multiply)
                     .orElse(new BigDecimal(0));
         }
@@ -34,6 +34,6 @@ public class Profitability {
 
     @Override
     public String toString() {
-        return "dev.natsoft.arbitrage.model.Profitability{profit: " + this.getProfitability() + ", path:" + this.path + "}";
+        return "Profitability{profit: " + this.getProfitability() + ", path:" + this.path + "}";
     }
 }

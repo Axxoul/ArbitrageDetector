@@ -46,7 +46,15 @@ public class Bitfinex implements Exchange {
 
     }
 
+    @Override
+    public BigDecimal getTakerFee() {
+        return new BigDecimal("0.00200") // 0.2%
+                .multiply(new BigDecimal(1)
+                        .subtract(new BigDecimal("0.15"))); // 15% off for LEO holders
+    }
+
     private void watchInstrument(BitfinexWebsocketClient client, BitfinexCurrencyPair pair) {
+        LOGGER.info("Watching {}", pair);
         final QuoteManager quoteManager = client.getQuoteManager();
         final BitfinexTickerSymbol symbol = BitfinexSymbols.ticker(pair);
 
@@ -64,6 +72,7 @@ public class Bitfinex implements Exchange {
             if (tick.getVolume().compareTo(new BigDecimal(15000)) < 0
                     || spreadRate.compareTo(new BigDecimal("0.7")) > 0) {
                 client.getQuoteManager().unsubscribeTicker(symbol);
+                LOGGER.info("Dropping {}", symbol);
                 return;
             }
 
@@ -83,12 +92,11 @@ public class Bitfinex implements Exchange {
                     Constants.DF.format(vol)
             ));
 
-            exchangeRates.updateSecurity(new Market(from, to, Constants.BITFINEX).setRate(rate)); // Bid vs ask?
-            exchangeRates.updateSecurity(new Market(to, from, Constants.BITFINEX).setRate(reverseRate)); // Bid vs ask?
+            exchangeRates.updateSecurity(new Market(from, to, this).setRate(rate));
+            exchangeRates.updateSecurity(new Market(to, from, this).setRate(reverseRate));
 
         } catch (Exception e) {
             LOGGER.error(e.getMessage(), e);
         }
     }
-
 }

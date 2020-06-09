@@ -10,7 +10,7 @@
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
-      <module name="BitfinexArbitrageDetector" target="14" />
+      <module name="BitfinexArbitrageDetector" target="1.5" />
     </bytecodeTargetLevel>
   </component>
 </project>

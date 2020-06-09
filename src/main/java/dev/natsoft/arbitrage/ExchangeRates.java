@@ -42,6 +42,8 @@ public class ExchangeRates {
 
     public void updateSecurity(Market rate) {
         graphLock.lock();
+
+        // Fixme multigraph for many exchanges?
         Set<Market> markets = exchangeRates.getAllEdges(rate.from, rate.to);
 
         Market market = null;
@@ -86,7 +88,7 @@ public class ExchangeRates {
                 .filter(this::isOwned)
                 .map(this::findArbitrageForSecurity)
                 .map(Profitability::new)
-                .filter(Profitability::meetsThreshold)
+//                .filter(Profitability::meetsThreshold)
                 .max(Comparator.comparing(Profitability::getProfitability))
                 .ifPresent(this::report);
 
@@ -128,7 +130,7 @@ public class ExchangeRates {
         LOGGER.warn(message);
 
         try {
-            File file = new File("target/arbitrage.csv");
+            File file = new File("tmp/arbitrage.csv");
             FileWriter fr = new FileWriter(file, true);
 
             List<String> row = new LinkedList<>();

@@ -1,15 +1,17 @@
 package dev.natsoft.arbitrage.model;
 
+import dev.natsoft.arbitrage.exchanges.Exchange;
+
 import java.math.BigDecimal;
 import java.text.NumberFormat;
 
 public class Market {
     public final String from;
     public final String to;
-    public final String exchange;
+    public final Exchange exchange;
     private BigDecimal rate;
 
-    public Market(String from, String to, String exchange) {
+    public Market(String from, String to, Exchange exchange) {
         this.from = from;
         this.to = to;
         this.exchange = exchange;
@@ -17,6 +19,10 @@ public class Market {
 
     public BigDecimal getRate() {
         return rate;
+    }
+
+    public BigDecimal getRateWithFees() {
+        return rate.multiply(new BigDecimal(1).subtract(exchange.getTakerFee())); // we will pay the taker fee to place this market order
     }
 
     public Market setRate(BigDecimal rate) {
@@ -27,7 +33,7 @@ public class Market {
     @Override
     public String toString() {
 
-        return "dev.natsoft.arbitrage.model.Market{" +
+        return "Market{" +
                 "from='" + from + '\'' +
                 ", to='" + to + '\'' +
                 ", exchange='" + exchange + '\'' +
