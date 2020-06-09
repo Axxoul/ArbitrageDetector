@@ -11,6 +11,8 @@ import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Timer;
+import java.util.TimerTask;
 
 public class ArbitrageDetector {
     private static final Logger LOGGER = LoggerFactory.getLogger(ArbitrageDetector.class);
@@ -25,6 +27,12 @@ public class ArbitrageDetector {
         client = BitfinexClientFactory.newSimpleClient();
         client.connect();
 
+        new Timer().scheduleAtFixedRate(new TimerTask(){
+            @Override
+            public void run(){
+                exchangeRates.detectArbitrage();
+            }
+        },0,5000);
 
         // Todo gracefully Pool and get
         for (BitfinexCurrencyPair pair : BitfinexCurrencyPair.values()) {
@@ -69,7 +77,6 @@ public class ArbitrageDetector {
             String from = currencies[0];
             String to = currencies[1];
 
-
             LOGGER.info(String.format("[%s] spread rate: %s, vol: %s",
                     symbol.getCurrency(),
                     Constants.DF.format(spreadRate),
@@ -78,8 +85,6 @@ public class ArbitrageDetector {
 
             exchangeRates.updateSecurity(new Market(from, to, Constants.BITFINEX).setRate(rate)); // Bid vs ask?
             exchangeRates.updateSecurity(new Market(to, from, Constants.BITFINEX).setRate(reverseRate)); // Bid vs ask?
-
-            exchangeRates.detectArbitrage();
         } catch (Exception e) {
             LOGGER.error(e.getMessage(), e);
         }
