@@ -2,6 +2,7 @@ package dev.natsoft.arbitrage.exchanges;
 
 import com.github.jnidzwetzki.bitfinex.v2.BitfinexClientFactory;
 import com.github.jnidzwetzki.bitfinex.v2.BitfinexWebsocketClient;
+import com.github.jnidzwetzki.bitfinex.v2.BitfinexWebsocketConfiguration;
 import com.github.jnidzwetzki.bitfinex.v2.entity.BitfinexTick;
 import com.github.jnidzwetzki.bitfinex.v2.entity.currency.BitfinexCurrencyPair;
 import com.github.jnidzwetzki.bitfinex.v2.manager.QuoteManager;
@@ -9,7 +10,7 @@ import com.github.jnidzwetzki.bitfinex.v2.symbol.BitfinexSymbols;
 import com.github.jnidzwetzki.bitfinex.v2.symbol.BitfinexTickerSymbol;
 import dev.natsoft.arbitrage.ArbitrageDetector;
 import dev.natsoft.arbitrage.Constants;
-import dev.natsoft.arbitrage.ExchangeRates;
+import dev.natsoft.arbitrage.RatesKnowledgeGraph;
 import dev.natsoft.arbitrage.model.Market;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,18 +21,23 @@ import java.math.RoundingMode;
 public class Bitfinex implements Exchange {
     private static final Logger LOGGER = LoggerFactory.getLogger(ArbitrageDetector.class);
     private BitfinexWebsocketClient client;
-    private ExchangeRates exchangeRates;
+    private RatesKnowledgeGraph ratesKnowledgeGraph;
 
 
     @Override
-    public void startUpdating(ExchangeRates exchangeRates) {
-        this.exchangeRates = exchangeRates;
+    public void startUpdating(RatesKnowledgeGraph ratesKnowledgeGraph) {
+        this.ratesKnowledgeGraph = ratesKnowledgeGraph;
 
         // TODO pooled client?
+        // TODO crawler proxy?
         BitfinexCurrencyPair.registerDefaults();
-        client = BitfinexClientFactory.newSimpleClient();
+        BitfinexWebsocketConfiguration config = new BitfinexWebsocketConfiguration();
+        config.setApiCredentials(
+                System.getenv("BFX_API_KEY"),
+                System.getenv("BFX_API_SECRET")
+        );
+        client = BitfinexClientFactory.newSimpleClient(config);
         client.connect();
-
 
         // Todo gracefully Pool and get
         for (BitfinexCurrencyPair pair : BitfinexCurrencyPair.values()) {
@@ -51,6 +57,17 @@ public class Bitfinex implements Exchange {
         return new BigDecimal("0.00200") // 0.2%
                 .multiply(new BigDecimal(1)
                         .subtract(new BigDecimal("0.15"))); // 15% off for LEO holders
+    }
+
+    @Override
+    public void updateAssetsStatus() {
+        // TODO
+
+    }
+
+    @Override
+    public boolean trade(Market market) {
+        return false;
     }
 
     private void watchInstrument(BitfinexWebsocketClient client, BitfinexCurrencyPair pair) {
@@ -92,8 +109,8 @@ public class Bitfinex implements Exchange {
                     Constants.DF.format(vol)
             ));
 
-            exchangeRates.updateSecurity(new Market(from, to, this).setRate(rate));
-            exchangeRates.updateSecurity(new Market(to, from, this).setRate(reverseRate));
+            ratesKnowledgeGraph.updateSecurity(new Market(from, to, this).setRate(rate));
+            ratesKnowledgeGraph.updateSecurity(new Market(to, from, this).setRate(reverseRate));
 
         } catch (Exception e) {
             LOGGER.error(e.getMessage(), e);

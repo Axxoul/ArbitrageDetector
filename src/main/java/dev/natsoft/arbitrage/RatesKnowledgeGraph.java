@@ -2,7 +2,7 @@ package dev.natsoft.arbitrage;
 
 import ch.obermuhlner.math.big.BigDecimalMath;
 import dev.natsoft.arbitrage.model.Market;
-import dev.natsoft.arbitrage.model.Profitability;
+import dev.natsoft.arbitrage.model.TradeChain;
 import org.jgrapht.Graph;
 import org.jgrapht.GraphPath;
 import org.jgrapht.alg.shortestpath.BellmanFordShortestPath;
@@ -22,12 +22,14 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import static com.google.common.collect.Iterators.find;
 
-public class ExchangeRates {
-    private static final Logger LOGGER = LoggerFactory.getLogger(ExchangeRates.class);
+public class RatesKnowledgeGraph {
+    private static final Logger LOGGER = LoggerFactory.getLogger(RatesKnowledgeGraph.class);
     private static Graph<String, Market> exchangeRates;
     private final ReentrantLock graphLock;
+    private TradeChain bestTrades;
+    private List<BestTradeSubscriber> subscribers;
 
-    public ExchangeRates() {
+    public RatesKnowledgeGraph() {
         exchangeRates = new DefaultDirectedWeightedGraph<>(Market.class);
         graphLock = new ReentrantLock();
 
@@ -39,6 +41,9 @@ public class ExchangeRates {
         }, 0, 5000);
     }
 
+    public TradeChain getBestTrades() {
+        return bestTrades;
+    }
 
     public void updateSecurity(Market rate) {
         graphLock.lock();
@@ -87,9 +92,9 @@ public class ExchangeRates {
                 .stream()
                 .filter(this::isOwned)
                 .map(this::findArbitrageForSecurity)
-                .map(Profitability::new)
-//                .filter(Profitability::meetsThreshold)
-                .max(Comparator.comparing(Profitability::getProfitability))
+                .map(TradeChain::new)
+//                .filter(TradeChain::meetsThreshold)
+                .max(Comparator.comparing(TradeChain::getProfitability))
                 .ifPresent(this::report);
 
         graphLock.unlock();
@@ -111,20 +116,24 @@ public class ExchangeRates {
     }
 
 
-    public void report(Profitability profit) {
-        if (profit.getProfitability().compareTo(new BigDecimal(0)) == 0) {
+    public void report(TradeChain tradeChain) {
+        if (tradeChain.getProfitability().compareTo(new BigDecimal(0)) == 0) {
             return;
         }
 
+        bestTrades = tradeChain;
+
+        subscribers.forEach(sub -> sub.receiveBestTrade(tradeChain));
+
         String profitability = Constants.DF.format(
-                profit.getProfitability()
+                tradeChain.getProfitability()
                         .subtract(new BigDecimal(1))
                         .multiply(new BigDecimal(100))
         );
 
         String message = String.format("Arbitrage detected: profit: %s, trades: %s",
                 profitability,
-                ilustratePath(profit.path)
+                ilustratePath(tradeChain.path)
         );
 
         LOGGER.warn(message);
@@ -136,7 +145,7 @@ public class ExchangeRates {
             List<String> row = new LinkedList<>();
             row.add(Instant.now().toString());
             row.add(profitability);
-            row.add(ilustratePath(profit.path).replace(",", "|"));
+            row.add(ilustratePath(tradeChain.path).replace(",", "|"));
 
             fr.write(String.join(",", row) + "\n");
             fr.close();
@@ -157,4 +166,7 @@ public class ExchangeRates {
         );
     }
 
+    public void registerSubscriber(BestTradeSubscriber sub) {
+
+    }
 }

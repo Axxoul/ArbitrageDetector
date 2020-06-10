@@ -7,15 +7,23 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ArbitrageDetector {
-    private static ExchangeRates exchangeRates;
+    private static RatesKnowledgeGraph ratesKnowledgeGraph;
+    private static AssetsManager assetsManager;
 
     public static void main(String[] args) {
-        exchangeRates = new ExchangeRates();
+        ratesKnowledgeGraph = new RatesKnowledgeGraph();
+        assetsManager = new AssetsManager(ratesKnowledgeGraph);
+
+        ratesKnowledgeGraph.registerSubscriber(assetsManager);
 
         List<Exchange> exchanges = new ArrayList<Exchange>() {{
             add(new Bitfinex());
         }};
 
-        exchanges.forEach(ex -> ex.startUpdating(exchangeRates));
+        exchanges.forEach(exchange -> {
+            exchange.startUpdating(ratesKnowledgeGraph);
+            assetsManager.startManaging(exchange);
+        });
+
     }
 }

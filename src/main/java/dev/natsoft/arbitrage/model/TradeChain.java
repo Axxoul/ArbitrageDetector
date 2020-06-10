@@ -5,12 +5,12 @@ import org.jgrapht.GraphPath;
 import java.math.BigDecimal;
 import java.util.Objects;
 
-public class Profitability {
+public class TradeChain {
     public static final BigDecimal PROFITABILITY_THRESHOLD = new BigDecimal("1.001");
     public final GraphPath<String, Market> path;
     private BigDecimal profitability;
 
-    public Profitability(GraphPath<String, Market> path) {
+    public TradeChain(GraphPath<String, Market> path) {
         this.path = path;
     }
 
@@ -20,6 +20,9 @@ public class Profitability {
                 .compareTo(PROFITABILITY_THRESHOLD) > 0;
     }
 
+    /**
+     * @return final profitability after fees as a multiplier (eg. 1.001)
+     */
     public BigDecimal getProfitability() {
         if (profitability == null) {
             profitability = path.getEdgeList()
@@ -34,6 +37,6 @@ public class Profitability {
 
     @Override
     public String toString() {
-        return "Profitability{profit: " + this.getProfitability() + ", path:" + this.path + "}";
+        return "TradeChain{profit: " + this.getProfitability() + ", path:" + this.path + "}";
     }
 }

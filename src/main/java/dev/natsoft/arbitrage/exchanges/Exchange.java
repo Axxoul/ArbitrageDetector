@@ -1,11 +1,16 @@
 package dev.natsoft.arbitrage.exchanges;
 
-import dev.natsoft.arbitrage.ExchangeRates;
+import dev.natsoft.arbitrage.RatesKnowledgeGraph;
+import dev.natsoft.arbitrage.model.Market;
 
 import java.math.BigDecimal;
 
 public interface Exchange {
-    void startUpdating(ExchangeRates exchangeRates);
+    void startUpdating(RatesKnowledgeGraph ratesKnowledgeGraph);
 
     BigDecimal getTakerFee();
+
+    void updateAssetsStatus();
+
+    boolean trade(Market market);
 }

@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/BitfinexArbitrageDetector.iml" filepath="$PROJECT_DIR$/.idea/BitfinexArbitrageDetector.iml" />
+      <module fileurl="file://$PROJECT_DIR$/ArbitrageDetector.iml" filepath="$PROJECT_DIR$/ArbitrageDetector.iml" />
     </modules>
   </component>
 </project>
