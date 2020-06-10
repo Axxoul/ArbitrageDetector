@@ -12,5 +12,5 @@ public interface Exchange {
 
     void updateAssetsStatus();
 
-    boolean trade(Market market);
+    void trade(Market market, BigDecimal amount);
 }

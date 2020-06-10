@@ -3,6 +3,8 @@ package dev.natsoft.arbitrage.exchanges;
 import com.github.jnidzwetzki.bitfinex.v2.BitfinexClientFactory;
 import com.github.jnidzwetzki.bitfinex.v2.BitfinexWebsocketClient;
 import com.github.jnidzwetzki.bitfinex.v2.BitfinexWebsocketConfiguration;
+import com.github.jnidzwetzki.bitfinex.v2.entity.BitfinexNewOrder;
+import com.github.jnidzwetzki.bitfinex.v2.entity.BitfinexOrderType;
 import com.github.jnidzwetzki.bitfinex.v2.entity.BitfinexTick;
 import com.github.jnidzwetzki.bitfinex.v2.entity.currency.BitfinexCurrencyPair;
 import com.github.jnidzwetzki.bitfinex.v2.manager.QuoteManager;
@@ -28,7 +30,6 @@ public class Bitfinex implements Exchange {
     public void startUpdating(RatesKnowledgeGraph ratesKnowledgeGraph) {
         this.ratesKnowledgeGraph = ratesKnowledgeGraph;
 
-        // TODO pooled client?
         // TODO crawler proxy?
         BitfinexCurrencyPair.registerDefaults();
         BitfinexWebsocketConfiguration config = new BitfinexWebsocketConfiguration();
@@ -36,7 +37,7 @@ public class Bitfinex implements Exchange {
                 System.getenv("BFX_API_KEY"),
                 System.getenv("BFX_API_SECRET")
         );
-        client = BitfinexClientFactory.newSimpleClient(config);
+        client = BitfinexClientFactory.newPooledClient(config, 30);
         client.connect();
 
         // Todo gracefully Pool and get
@@ -66,8 +67,32 @@ public class Bitfinex implements Exchange {
     }
 
     @Override
-    public boolean trade(Market market) {
-        return false;
+    public void trade(Market market, BigDecimal amount) {
+        BitfinexCurrencyPair pair;
+        BigDecimal realAmount;
+
+        try {
+            pair = BitfinexCurrencyPair.of(market.from, market.to);
+            realAmount = amount;
+        } catch (IllegalArgumentException e) {
+            pair = BitfinexCurrencyPair.of(market.to, market.from);
+            realAmount = amount.negate();
+        }
+
+        BitfinexNewOrder order = new BitfinexNewOrder();
+        order.setOrderType(BitfinexOrderType.EXCHANGE_MARKET);
+        order.setCurrencyPair(pair);
+        order.setAmount(realAmount);
+
+        // halp locks :(
+//        BitfinexSubmittedOrder
+//                BitfinexMyExecutedTrade
+//        client.getTradeManager().registerCallback(trade -> {
+//            trade.
+//
+//        });
+//        client.getOrderManager().placeOrder(order);
+//        client.getOrderManager().registerCallback(k);
     }
 
     private void watchInstrument(BitfinexWebsocketClient client, BitfinexCurrencyPair pair) {
