@@ -1,6 +1,6 @@
 package dev.natsoft.arbitrage.exchanges;
 
-import com.github.jnidzwetzki.bitfinex.v2.entity.BitfinexExecutedTrade;
+import com.github.jnidzwetzki.bitfinex.v2.entity.BitfinexSubmittedOrder;
 import dev.natsoft.arbitrage.RatesKnowledgeGraph;
 import dev.natsoft.arbitrage.model.Market;
 
@@ -13,7 +13,10 @@ public interface Exchange {
 
     /**
      * Should be blocking until the trade comes through
+     *
      * @return executed trade information
      */
-    BitfinexExecutedTrade trade(Market market, BigDecimal amount);
+    BitfinexSubmittedOrder trade(Market market, BigDecimal amount) throws Exception;
+
+    BigDecimal getUSDBalance();
 }

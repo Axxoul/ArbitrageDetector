@@ -32,20 +32,33 @@ public class AssetsManager implements BestTradeSubscriber {
 
     @Override
     public void receiveBestTrade(TradeChain tradeChain) {
-        if (tradeChain.getProfitability().compareTo(new BigDecimal("1.001")) < 0) return;
+        if (tradeChain.getProfitability().compareTo(new BigDecimal("0.993")) < 0)
+            return;
+
+        if (!tradeChain.ilustratePath().contains("USD"))
+            return; // Only if contains usd
+
         LOGGER.info("Locking new trades");
         tradeLock.lock();
 
-        TradeExecutor te = new TradeExecutor();
-        te.execute(tradeChain);
+        try {
+
+            SimpleMarketTradeExecutor te = new SimpleMarketTradeExecutor();
+            te.execute(tradeChain);
+
+            reportTrades(te);
+        } catch (Exception e) {
+            LOGGER.error(e.getMessage(), e);
+        }
+
 
         // we only want one trade for now
+        System.exit(0);
 //        tradeLock.unlock();
 
-        reportTrades(te);
     }
 
-    private void reportTrades(TradeExecutor te) {
+    private void reportTrades(SimpleMarketTradeExecutor te) {
         LOGGER.info("=== TRADE REPORT ===");
         LOGGER.info("= Executor Class: {}", te.getClass());
         te.getExecutedTrades().forEach(trade -> {

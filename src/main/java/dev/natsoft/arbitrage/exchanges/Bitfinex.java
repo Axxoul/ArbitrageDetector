@@ -1,6 +1,7 @@
 package dev.natsoft.arbitrage.exchanges;
 
 import com.github.jnidzwetzki.bitfinex.v2.BitfinexClientFactory;
+import com.github.jnidzwetzki.bitfinex.v2.BitfinexOrderBuilder;
 import com.github.jnidzwetzki.bitfinex.v2.BitfinexWebsocketClient;
 import com.github.jnidzwetzki.bitfinex.v2.BitfinexWebsocketConfiguration;
 import com.github.jnidzwetzki.bitfinex.v2.entity.*;
@@ -19,13 +20,14 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public class Bitfinex implements Exchange {
     private static final Logger LOGGER = LoggerFactory.getLogger(ArbitrageDetector.class);
+    private final List<BitfinexSubmittedOrder> submittedOrderList;
+    private final List<BitfinexMyExecutedTrade> executedTradesList;
     private BitfinexWebsocketClient client;
     private RatesKnowledgeGraph ratesKnowledgeGraph;
-    private List<BitfinexSubmittedOrder> submittedOrderList;
-    private List<BitfinexMyExecutedTrade> executedTradesList;
 
     public Bitfinex() {
         this.submittedOrderList = new ArrayList<>();
@@ -47,6 +49,16 @@ public class Bitfinex implements Exchange {
         client = BitfinexClientFactory.newPooledClient(config, 30);
         client.connect();
 
+        LOGGER.info("=== Balances ===");
+
+        client.getWalletManager()
+                .getWallets()
+                .forEach(wal -> {
+                    BigDecimal bal = wal.getBalanceAvailable();
+                    bal = bal != null ? bal : new BigDecimal(0);
+                    LOGGER.info("= {} : {}", wal.getCurrency(), Constants.DF.format(bal));
+                });
+
         client.getOrderManager().registerCallback(this::handleSentOrder);
         client.getTradeManager().registerCallback(this::handleTradeExecuted);
 
@@ -55,7 +67,7 @@ public class Bitfinex implements Exchange {
             watchInstrument(client, pair);
 
             try {
-                Thread.sleep(1000);
+                Thread.sleep(50);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -74,63 +86,89 @@ public class Bitfinex implements Exchange {
     @Override
     public BigDecimal getTakerFee() {
         return new BigDecimal("0.00200") // 0.2%
-                .multiply(new BigDecimal(1)
-                        .subtract(new BigDecimal("0.15"))); // 15% off for LEO holders
+//                .multiply(new BigDecimal(1)
+//                        .subtract(new BigDecimal("0.15"))) // 15% off for LEO holders
+                ;
     }
 
     @Override
-    public BitfinexExecutedTrade trade(Market market, BigDecimal amount) {
-        LOGGER.info("Trading {}->{}, amount: {}", market.from, market.to, Constants.DF.format(amount));
+    public BitfinexSubmittedOrder trade(Market market, BigDecimal sourceAmount) throws Exception {
+        LOGGER.info("Trading {}->{}, amount: {}", market.from, market.to, Constants.DF.format(sourceAmount));
         BitfinexCurrencyPair pair;
-        BigDecimal realAmount;
+        BigDecimal targetAmount;
 
         try {
             pair = BitfinexCurrencyPair.of(market.from, market.to);
-            realAmount = amount;
+            targetAmount = sourceAmount.negate();
         } catch (IllegalArgumentException e) {
             pair = BitfinexCurrencyPair.of(market.to, market.from);
-            realAmount = amount.negate();
+            targetAmount = sourceAmount.divide(market.getPrice(), 100, RoundingMode.HALF_DOWN);
         }
 
-        BitfinexNewOrder order = new BitfinexNewOrder();
-        order.setOrderType(BitfinexOrderType.EXCHANGE_MARKET);
-        order.setCurrencyPair(pair);
-        order.setAmount(realAmount);
+        BitfinexNewOrder order = BitfinexOrderBuilder.create(
+                pair,
+                BitfinexOrderType.EXCHANGE_MARKET,
+                targetAmount
+        ).build();
 
-        LOGGER.info("Order placed for {}->{}, amount: {}", market.from, market.to, Constants.DF.format(amount));
+        LOGGER.info("Order placed for {}->{}({}), amount: {}", market.from, market.to, pair.toString(), Constants.DF.format(sourceAmount));
 
         client.getOrderManager().placeOrder(order);
 
         BitfinexSubmittedOrder submittedOrder = waitForOrder(order);
-        LOGGER.info("Order: {}", submittedOrder);
-
-        BitfinexExecutedTrade trade = waitForTrade(submittedOrder);
-        LOGGER.info("Trade performed: {}", trade);
-
-        return trade;
-    }
-
-    private BitfinexExecutedTrade waitForTrade(BitfinexSubmittedOrder submittedOrder) {
-        BitfinexExecutedTrade trade = null;
-
-        while (trade == null) {
-            trade = executedTradesList
-                    .stream()
-                    .filter(t -> t.getOrderId().equals(submittedOrder.getOrderId()))
-                    .findAny()
-                    .orElse(null);
-
-            if (trade == null) {
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
+        LOGGER.info("Order finished: {}", submittedOrder);
+        if (submittedOrder.getStatus() == BitfinexSubmittedOrderStatus.ERROR) {
+            throw new Exception(submittedOrder.getStatusDescription());
         }
 
-        return trade;
+//        BigDecimal balance = client.getWalletManager()
+//                .getWallets()
+//                .stream()
+//                .filter(wal -> wal.getCurrency().equals(market.to))
+//                .map(BitfinexWallet::getBalanceAvailable)
+//                .filter(Objects::nonNull)
+//                .findAny()
+//                .orElseThrow(Exception::new);
+
+//        BitfinexMyExecutedTrade trade = waitForTrade(submittedOrder);
+//        LOGGER.info("Trade performed: {}", trade);
+
+        return submittedOrder;
     }
+
+    @Override
+    public BigDecimal getUSDBalance() {
+        return client.getWalletManager()
+                .getWallets()
+                .stream()
+                .filter(wal -> wal.getCurrency().equals("USD"))
+                .map(BitfinexWallet::getBalanceAvailable)
+                .filter(Objects::nonNull)
+                .findAny()
+                .orElse(new BigDecimal(0));
+    }
+
+//    private BitfinexMyExecutedTrade waitForTrade(BitfinexSubmittedOrder submittedOrder) {
+//        BitfinexMyExecutedTrade trade = null;
+//
+//        while (trade == null) {
+//            trade = executedTradesList
+//                    .stream()
+//                    .filter(t -> t.getOrderId().equals(submittedOrder.getOrderId()))
+//                    .findAny()
+//                    .orElse(null);
+//
+//            if (trade == null) {
+//                try {
+//                    Thread.sleep(50);
+//                } catch (InterruptedException e) {
+//                    e.printStackTrace();
+//                }
+//            }
+//        }
+//
+//        return trade;
+//    }
 
     private BitfinexSubmittedOrder waitForOrder(BitfinexNewOrder order) {
         BitfinexSubmittedOrder submittedOrder = null;
@@ -138,14 +176,15 @@ public class Bitfinex implements Exchange {
         while (submittedOrder == null) {
             submittedOrder = submittedOrderList
                     .stream()
-                    .filter(so -> so.getCurrencyPair() == order.getCurrencyPair())
-                    .filter(so -> so.getAmount().equals(order.getAmount()))
+                    .filter(so -> so.getClientId() == order.getClientId())
+                    .filter(so -> so.getStatus() != BitfinexSubmittedOrderStatus.ACTIVE
+                            && so.getStatus() != BitfinexSubmittedOrderStatus.PARTIALLY_FILLED)
                     .findAny()
                     .orElse(null);
 
             if (submittedOrder == null) {
                 try {
-                    Thread.sleep(1000);
+                    Thread.sleep(50);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
@@ -194,8 +233,8 @@ public class Bitfinex implements Exchange {
                     Constants.DF.format(vol)
             ));
 
-            ratesKnowledgeGraph.updateSecurity(new Market(from, to, this).setRate(rate));
-            ratesKnowledgeGraph.updateSecurity(new Market(to, from, this).setRate(reverseRate));
+            ratesKnowledgeGraph.updateSecurity(new Market(from, to, this).setRate(rate).setPrice(tick.getBid()));
+            ratesKnowledgeGraph.updateSecurity(new Market(to, from, this).setRate(reverseRate).setPrice(tick.getAsk()));
 
         } catch (Exception e) {
             LOGGER.error(e.getMessage(), e);

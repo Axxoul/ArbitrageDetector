@@ -26,12 +26,13 @@ public class RatesKnowledgeGraph {
     private static final Logger LOGGER = LoggerFactory.getLogger(RatesKnowledgeGraph.class);
     private static Graph<String, Market> exchangeRates;
     private final ReentrantLock graphLock;
+    private final List<BestTradeSubscriber> subscribers;
     private TradeChain bestTrades;
-    private List<BestTradeSubscriber> subscribers;
 
     public RatesKnowledgeGraph() {
         exchangeRates = new DefaultDirectedWeightedGraph<>(Market.class);
         graphLock = new ReentrantLock();
+        subscribers = new ArrayList<>();
 
         new Timer().scheduleAtFixedRate(new TimerTask() {
             @Override
@@ -73,6 +74,7 @@ public class RatesKnowledgeGraph {
         }
 
         market.setRate(rate.getRate());
+        market.setPrice(rate.getPrice());
 
         // https://medium.com/@anilpai/currency-arbitrage-using-bellman-ford-algorithm-8938dcea56ea
         // prepare weights for finding shortest path
@@ -123,8 +125,6 @@ public class RatesKnowledgeGraph {
 
         bestTrades = tradeChain;
 
-        subscribers.forEach(sub -> sub.receiveBestTrade(tradeChain));
-
         String profitability = Constants.DF.format(
                 tradeChain.getProfitability()
                         .subtract(new BigDecimal(1))
@@ -133,7 +133,7 @@ public class RatesKnowledgeGraph {
 
         String message = String.format("Arbitrage detected: profit: %s, trades: %s",
                 profitability,
-                ilustratePath(tradeChain.path)
+                tradeChain.ilustratePath()
         );
 
         LOGGER.warn(message);
@@ -145,28 +145,18 @@ public class RatesKnowledgeGraph {
             List<String> row = new LinkedList<>();
             row.add(Instant.now().toString());
             row.add(profitability);
-            row.add(ilustratePath(tradeChain.path).replace(",", "|"));
+            row.add(tradeChain.ilustratePath().replace(",", "|"));
 
             fr.write(String.join(",", row) + "\n");
             fr.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
-    }
 
-    private String ilustratePath(GraphPath<String, Market> path) {
-        Object[] instruments = path.getEdgeList()
-                .stream()
-                .map(edge -> String.format("[%s,%s]", edge.from, edge.to))
-                .toArray();
-
-        return String.format("{Trades: number: %s, instruments: %s}",
-                path.getLength(),
-                Arrays.toString(instruments)
-        );
+        subscribers.forEach(sub -> sub.receiveBestTrade(tradeChain));
     }
 
     public void registerSubscriber(BestTradeSubscriber sub) {
-
+        subscribers.add(sub);
     }
 }

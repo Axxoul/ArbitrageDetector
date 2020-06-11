@@ -10,6 +10,7 @@ public class Market {
     public final String to;
     public final Exchange exchange;
     private BigDecimal rate;
+    private BigDecimal price;
 
     public Market(String from, String to, Exchange exchange) {
         this.from = from;
@@ -17,17 +18,26 @@ public class Market {
         this.exchange = exchange;
     }
 
-    public BigDecimal getRate() {
-        return rate;
+    public BigDecimal getPrice() {
+        return price;
     }
 
-    public BigDecimal getRateWithFees() {
-        return rate.multiply(new BigDecimal(1).subtract(exchange.getTakerFee())); // we will pay the taker fee to place this market order
+    public Market setPrice(BigDecimal price) {
+        this.price = price;
+        return this;
+    }
+
+    public BigDecimal getRate() {
+        return rate;
     }
 
     public Market setRate(BigDecimal rate) {
         this.rate = rate;
         return this;
+    }
+
+    public BigDecimal getRateWithFees() {
+        return rate.multiply(new BigDecimal(1).subtract(exchange.getTakerFee())); // we will pay the taker fee to place this market order
     }
 
     @Override
@@ -40,4 +50,5 @@ public class Market {
                 ", rate=" + NumberFormat.getCurrencyInstance().format(rate) +
                 '}';
     }
+
 }

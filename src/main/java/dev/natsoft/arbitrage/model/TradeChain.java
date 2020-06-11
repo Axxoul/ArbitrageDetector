@@ -3,6 +3,7 @@ package dev.natsoft.arbitrage.model;
 import org.jgrapht.GraphPath;
 
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.Objects;
 
 public class TradeChain {
@@ -38,5 +39,17 @@ public class TradeChain {
     @Override
     public String toString() {
         return "TradeChain{profit: " + this.getProfitability() + ", path:" + this.path + "}";
+    }
+
+    public String ilustratePath() {
+        Object[] instruments = path.getEdgeList()
+                .stream()
+                .map(edge -> String.format("[%s,%s]", edge.from, edge.to))
+                .toArray();
+
+        return String.format("{Trades: number: %s, instruments: %s}",
+                path.getLength(),
+                Arrays.toString(instruments)
+        );
     }
 }
