@@ -3,9 +3,7 @@ package dev.natsoft.arbitrage.exchanges;
 import com.github.jnidzwetzki.bitfinex.v2.BitfinexClientFactory;
 import com.github.jnidzwetzki.bitfinex.v2.BitfinexWebsocketClient;
 import com.github.jnidzwetzki.bitfinex.v2.BitfinexWebsocketConfiguration;
-import com.github.jnidzwetzki.bitfinex.v2.entity.BitfinexNewOrder;
-import com.github.jnidzwetzki.bitfinex.v2.entity.BitfinexOrderType;
-import com.github.jnidzwetzki.bitfinex.v2.entity.BitfinexTick;
+import com.github.jnidzwetzki.bitfinex.v2.entity.*;
 import com.github.jnidzwetzki.bitfinex.v2.entity.currency.BitfinexCurrencyPair;
 import com.github.jnidzwetzki.bitfinex.v2.manager.QuoteManager;
 import com.github.jnidzwetzki.bitfinex.v2.symbol.BitfinexSymbols;
@@ -19,11 +17,20 @@ import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Bitfinex implements Exchange {
     private static final Logger LOGGER = LoggerFactory.getLogger(ArbitrageDetector.class);
     private BitfinexWebsocketClient client;
     private RatesKnowledgeGraph ratesKnowledgeGraph;
+    private List<BitfinexSubmittedOrder> submittedOrderList;
+    private List<BitfinexMyExecutedTrade> executedTradesList;
+
+    public Bitfinex() {
+        this.submittedOrderList = new ArrayList<>();
+        this.executedTradesList = new ArrayList<>();
+    }
 
 
     @Override
@@ -40,6 +47,9 @@ public class Bitfinex implements Exchange {
         client = BitfinexClientFactory.newPooledClient(config, 30);
         client.connect();
 
+        client.getOrderManager().registerCallback(this::handleSentOrder);
+        client.getTradeManager().registerCallback(this::handleTradeExecuted);
+
         // Todo gracefully Pool and get
         for (BitfinexCurrencyPair pair : BitfinexCurrencyPair.values()) {
             watchInstrument(client, pair);
@@ -53,6 +63,14 @@ public class Bitfinex implements Exchange {
 
     }
 
+    private void handleTradeExecuted(BitfinexMyExecutedTrade bitfinexMyExecutedTrade) {
+        executedTradesList.add(0, bitfinexMyExecutedTrade);
+    }
+
+    private void handleSentOrder(BitfinexSubmittedOrder submittedOrder) {
+        submittedOrderList.add(0, submittedOrder);
+    }
+
     @Override
     public BigDecimal getTakerFee() {
         return new BigDecimal("0.00200") // 0.2%
@@ -61,13 +79,8 @@ public class Bitfinex implements Exchange {
     }
 
     @Override
-    public void updateAssetsStatus() {
-        // TODO
-
-    }
-
-    @Override
-    public void trade(Market market, BigDecimal amount) {
+    public BitfinexExecutedTrade trade(Market market, BigDecimal amount) {
+        LOGGER.info("Trading {}->{}, amount: {}", market.from, market.to, Constants.DF.format(amount));
         BitfinexCurrencyPair pair;
         BigDecimal realAmount;
 
@@ -84,15 +97,62 @@ public class Bitfinex implements Exchange {
         order.setCurrencyPair(pair);
         order.setAmount(realAmount);
 
-        // halp locks :(
-//        BitfinexSubmittedOrder
-//                BitfinexMyExecutedTrade
-//        client.getTradeManager().registerCallback(trade -> {
-//            trade.
-//
-//        });
-//        client.getOrderManager().placeOrder(order);
-//        client.getOrderManager().registerCallback(k);
+        LOGGER.info("Order placed for {}->{}, amount: {}", market.from, market.to, Constants.DF.format(amount));
+
+        client.getOrderManager().placeOrder(order);
+
+        BitfinexSubmittedOrder submittedOrder = waitForOrder(order);
+        LOGGER.info("Order: {}", submittedOrder);
+
+        BitfinexExecutedTrade trade = waitForTrade(submittedOrder);
+        LOGGER.info("Trade performed: {}", trade);
+
+        return trade;
+    }
+
+    private BitfinexExecutedTrade waitForTrade(BitfinexSubmittedOrder submittedOrder) {
+        BitfinexExecutedTrade trade = null;
+
+        while (trade == null) {
+            trade = executedTradesList
+                    .stream()
+                    .filter(t -> t.getOrderId().equals(submittedOrder.getOrderId()))
+                    .findAny()
+                    .orElse(null);
+
+            if (trade == null) {
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        return trade;
+    }
+
+    private BitfinexSubmittedOrder waitForOrder(BitfinexNewOrder order) {
+        BitfinexSubmittedOrder submittedOrder = null;
+
+        while (submittedOrder == null) {
+            submittedOrder = submittedOrderList
+                    .stream()
+                    .filter(so -> so.getCurrencyPair() == order.getCurrencyPair())
+                    .filter(so -> so.getAmount().equals(order.getAmount()))
+                    .findAny()
+                    .orElse(null);
+
+            if (submittedOrder == null) {
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        return submittedOrder;
     }
 
     private void watchInstrument(BitfinexWebsocketClient client, BitfinexCurrencyPair pair) {

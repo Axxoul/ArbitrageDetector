@@ -1,5 +1,6 @@
 package dev.natsoft.arbitrage.exchanges;
 
+import com.github.jnidzwetzki.bitfinex.v2.entity.BitfinexExecutedTrade;
 import dev.natsoft.arbitrage.RatesKnowledgeGraph;
 import dev.natsoft.arbitrage.model.Market;
 
@@ -10,7 +11,9 @@ public interface Exchange {
 
     BigDecimal getTakerFee();
 
-    void updateAssetsStatus();
-
-    void trade(Market market, BigDecimal amount);
+    /**
+     * Should be blocking until the trade comes through
+     * @return executed trade information
+     */
+    BitfinexExecutedTrade trade(Market market, BigDecimal amount);
 }
