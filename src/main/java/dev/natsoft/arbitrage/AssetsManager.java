@@ -10,9 +10,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
-/*
-Facade for accessing all information about the current state of assets and orders.
-*/
+/**
+ * Facade for accessing all information about the current state of assets and orders.
+ */
 public class AssetsManager implements BestTradeSubscriber {
     private static final Logger LOGGER = LoggerFactory.getLogger(AssetsManager.class);
     private final ReentrantLock tradeLock;
@@ -39,10 +39,10 @@ public class AssetsManager implements BestTradeSubscriber {
         TradeExecutor te = new TradeExecutor();
         te.execute(tradeChain);
 
-        reportTrades(te);
-
         // we only want one trade for now
 //        tradeLock.unlock();
+
+        reportTrades(te);
     }
 
     private void reportTrades(TradeExecutor te) {
