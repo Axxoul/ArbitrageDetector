@@ -11,25 +11,31 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
 public class TradeReport {
     private static final Logger LOGGER = LoggerFactory.getLogger(AssetsManager.class);
 
-    private final Class executorClass;
-    private final String tradePath;
-    private final String expectedProfitability;
-    private final String actualProfitability;
-    private final String USDBefore;
-    private final String USDAfter;
-    private final String trades;
-    private final SimpleMarketTradeExecutor te;
+    public final String timestamp;
+    public final BigDecimal USDTraded;
+    public final Class executorClass;
+    public final String tradePath;
+    public final String expectedProfitability;
+    public final String actualProfitability;
+    public final String USDBefore;
+    public final String USDAfter;
+    public final String trades;
+    public final SimpleMarketTradeExecutor te;
 
     public TradeReport(SimpleMarketTradeExecutor te) {
         this.te = te;
 
+        USDTraded = te.firstUSDAmount;
+        timestamp = Instant.now().toString();
         executorClass = te.getClass();
         tradePath = te.tradeChain.ilustratePath();
         expectedProfitability = Constants.DF.format(te.tradeChain.getProfitability());
@@ -48,6 +54,7 @@ public class TradeReport {
         LOGGER.info("= Trade Path: {}", tradePath);
         LOGGER.info("= Expected Profitability: {}", expectedProfitability);
         LOGGER.info("= Actual Profitability: {} (USD {}->{})", actualProfitability, USDBefore, USDAfter);
+        LOGGER.info("= Trade size: {} USD", USDTraded);
         te.getExecutedTrades().forEach(trade -> {
             LOGGER.info("== Trade: {}", trade);
         });
@@ -61,8 +68,10 @@ public class TradeReport {
         boolean exists = reportFile.exists();
         FileWriter pw = new FileWriter(reportFile, true);
         CSVPrinter csvPrinter = new CSVPrinter(pw, CSVFormat.DEFAULT.withHeader(
-                "USDBefore",
-                "USDAfter",
+                "Timestamp",
+                "USD Before",
+                "USD After",
+                "USD Traded",
                 "Expected Profitability",
                 "Actual Profitability",
                 "Path",
@@ -71,8 +80,10 @@ public class TradeReport {
         ).withSkipHeaderRecord(exists));
 
         csvPrinter.printRecord(
+                timestamp,
                 USDBefore,
                 USDAfter,
+                USDTraded,
                 expectedProfitability,
                 actualProfitability,
                 tradePath,

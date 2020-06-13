@@ -12,9 +12,10 @@ public class ArbitrageDetector {
 
     public static void main(String[] args) {
         ratesKnowledgeGraph = new RatesKnowledgeGraph();
-        assetsManager = new AssetsManager(ratesKnowledgeGraph);
+        assetsManager = new AssetsManager();
 
-        ratesKnowledgeGraph.registerSubscriber(assetsManager);
+        ratesKnowledgeGraph.getBestTradesStream()
+                .subscribe(assetsManager::receiveBestTrade);
 
         List<Exchange> exchanges = new ArrayList<Exchange>() {{
             add(new Bitfinex());
@@ -22,7 +23,6 @@ public class ArbitrageDetector {
 
         exchanges.forEach(exchange -> {
             exchange.startUpdating(ratesKnowledgeGraph);
-            assetsManager.startManaging(exchange);
         });
 
     }

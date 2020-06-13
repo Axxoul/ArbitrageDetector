@@ -3,6 +3,9 @@ package dev.natsoft.arbitrage;
 import ch.obermuhlner.math.big.BigDecimalMath;
 import dev.natsoft.arbitrage.model.Market;
 import dev.natsoft.arbitrage.model.TradeChain;
+import io.reactivex.rxjava3.core.Observable;
+import io.reactivex.rxjava3.subjects.PublishSubject;
+import io.reactivex.rxjava3.subjects.Subject;
 import org.jgrapht.Graph;
 import org.jgrapht.GraphPath;
 import org.jgrapht.alg.shortestpath.BellmanFordShortestPath;
@@ -17,7 +20,11 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.time.Instant;
-import java.util.*;
+import java.util.Comparator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static com.google.common.collect.Iterators.find;
@@ -26,20 +33,13 @@ public class RatesKnowledgeGraph {
     private static final Logger LOGGER = LoggerFactory.getLogger(RatesKnowledgeGraph.class);
     private static Graph<String, Market> exchangeRates;
     private final ReentrantLock graphLock;
-    private final List<BestTradeSubscriber> subscribers;
+    private final Subject<TradeChain> bestTradesStream;
     private TradeChain bestTrades;
 
     public RatesKnowledgeGraph() {
         exchangeRates = new DefaultDirectedWeightedGraph<>(Market.class);
         graphLock = new ReentrantLock();
-        subscribers = new ArrayList<>();
-
-        new Timer().scheduleAtFixedRate(new TimerTask() {
-            @Override
-            public void run() {
-                detectArbitrage();
-            }
-        }, 0, 5000);
+        bestTradesStream = PublishSubject.create();
     }
 
     public TradeChain getBestTrades() {
@@ -92,7 +92,6 @@ public class RatesKnowledgeGraph {
         exchangeRates
                 .vertexSet()
                 .stream()
-                .filter(this::isOwned)
                 .map(this::findArbitrageForSecurity)
                 .map(TradeChain::new)
 //                .filter(TradeChain::meetsThreshold)
@@ -100,10 +99,6 @@ public class RatesKnowledgeGraph {
                 .ifPresent(this::report);
 
         graphLock.unlock();
-    }
-
-    private boolean isOwned(String s) {
-        return s.equals("USD");
     }
 
     private GraphPath<String, Market> findArbitrageForSecurity(String s) {
@@ -153,10 +148,15 @@ public class RatesKnowledgeGraph {
             e.printStackTrace();
         }
 
-        subscribers.forEach(sub -> sub.receiveBestTrade(tradeChain));
+        bestTradesStream.onNext(tradeChain);
     }
 
-    public void registerSubscriber(BestTradeSubscriber sub) {
-        subscribers.add(sub);
+    public void registerTickerStream(Observable<Boolean> ticks) {
+        ticks.debounce(50, TimeUnit.MILLISECONDS)
+                .subscribe(__ -> detectArbitrage());
+    }
+
+    public Observable<TradeChain> getBestTradesStream() {
+        return bestTradesStream;
     }
 }
