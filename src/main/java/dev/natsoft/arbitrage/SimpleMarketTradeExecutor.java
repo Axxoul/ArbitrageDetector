@@ -9,7 +9,6 @@ import org.slf4j.LoggerFactory;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 public class SimpleMarketTradeExecutor {
     private static final Logger LOGGER = LoggerFactory.getLogger(SimpleMarketTradeExecutor.class);
@@ -55,9 +54,8 @@ public class SimpleMarketTradeExecutor {
 
         LOGGER.info("Finished trading {}", tradeChain.ilustratePath());
 
-        // wait for balance updates
-        Thread.sleep(10);
-        finalUSD = markets.get(0).exchange.getUSDBalance();
+        // TODO get rid of blocking operations
+        finalUSD = markets.get(0).exchange.getUSDUpdatesStream().blockingFirst();
         LOGGER.info("After trading USD: {}", Constants.DF.format(finalUSD));
         return executedTrades; // only start from USD for now
     }

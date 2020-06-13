@@ -92,7 +92,7 @@ public class AssetsManager {
                 .average()
                 .orElse(1);
 
-        BigDecimal threshold = new BigDecimal(avgExpectedProfit - avgActualProfit + 1);
+        BigDecimal threshold = new BigDecimal(avgExpectedProfit - avgActualProfit + 0.993);
 
         LOGGER.info("Threshold: {}, TradeChain: {}", Constants.DF.format(threshold), tradeChain.ilustratePath());
 

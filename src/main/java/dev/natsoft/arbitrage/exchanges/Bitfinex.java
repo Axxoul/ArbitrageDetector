@@ -92,10 +92,10 @@ public class Bitfinex implements Exchange {
                     bal = bal != null ? bal : new BigDecimal(0);
                     LOGGER.info("= {} : {}", wal.getCurrency(), Constants.DF.format(bal));
                 });
+        privateClient.getCallbacks().onMyWalletEvent(this::handleWalletUpdate);
 
         publicClient = BitfinexClientFactory.newPooledClient();
         publicClient.connect();
-        publicClient.getCallbacks().onMyWalletEvent(this::handleWalletUpdate);
 
         LOGGER.info("Starting tickers subscriptsions");
         for (BitfinexCurrencyPair pair : BitfinexCurrencyPair.values()) {

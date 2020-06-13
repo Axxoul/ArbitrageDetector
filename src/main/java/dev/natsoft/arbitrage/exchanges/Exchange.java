@@ -3,6 +3,7 @@ package dev.natsoft.arbitrage.exchanges;
 import com.github.jnidzwetzki.bitfinex.v2.entity.BitfinexSubmittedOrder;
 import dev.natsoft.arbitrage.RatesKnowledgeGraph;
 import dev.natsoft.arbitrage.model.Market;
+import io.reactivex.rxjava3.core.Observable;
 
 import java.math.BigDecimal;
 
@@ -19,4 +20,6 @@ public interface Exchange {
     BitfinexSubmittedOrder trade(Market market, BigDecimal amount) throws Exception;
 
     BigDecimal getUSDBalance();
+
+    Observable<BigDecimal> getUSDUpdatesStream();
 }
