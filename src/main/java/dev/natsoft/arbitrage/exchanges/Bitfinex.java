@@ -215,7 +215,7 @@ public class Bitfinex implements Exchange {
                     Constants.DF.format(vol)
             ));
 
-            if (tick.getVolume().compareTo(new BigDecimal(5000)) < 0
+            if (tick.getVolume().compareTo(new BigDecimal(4000)) < 0
                     || spreadRate.compareTo(new BigDecimal("1.5")) > 0) {
                 publicClient.getQuoteManager().unsubscribeTicker(symbol);
                 LOGGER.info("Dropping {} for spread or volume thresholds", symbol);

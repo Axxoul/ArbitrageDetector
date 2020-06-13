@@ -8,9 +8,9 @@ import io.reactivex.rxjava3.subjects.PublishSubject;
 import io.reactivex.rxjava3.subjects.Subject;
 import org.jgrapht.Graph;
 import org.jgrapht.GraphPath;
-import org.jgrapht.alg.shortestpath.BellmanFordShortestPath;
-import org.jgrapht.alg.shortestpath.NegativeCycleDetectedException;
+import org.jgrapht.alg.cycle.SzwarcfiterLauerSimpleCycles;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
+import org.jgrapht.graph.GraphWalk;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
 
 import static com.google.common.collect.Iterators.find;
 
@@ -89,11 +90,14 @@ public class RatesKnowledgeGraph {
     public void detectArbitrage() {
         graphLock.lock();
 
-        exchangeRates
-                .vertexSet()
-                .stream()
-                .map(this::findArbitrageForSecurity)
+        findArbitrageForSecurity().stream()
+//        exchangeRates
+//                .vertexSet()
+//                .stream()
+//                .map(this::findArbitrageForSecurity)
+//                .flatMap(List::stream)
                 .map(TradeChain::new)
+                .filter(tradeChain -> tradeChain.ilustratePath().contains("USD"))
 //                .filter(TradeChain::meetsThreshold)
                 .max(Comparator.comparing(TradeChain::getProfitability))
                 .ifPresent(this::report);
@@ -101,20 +105,38 @@ public class RatesKnowledgeGraph {
         graphLock.unlock();
     }
 
-    private GraphPath<String, Market> findArbitrageForSecurity(String s) {
-        try {
-            return new BellmanFordShortestPath<>(exchangeRates)
-                    .getPath(s, s);
-        } catch (NegativeCycleDetectedException e) {
-            // This is what we are looking for.
-            // https://medium.com/@anilpai/currency-arbitrage-using-bellman-ford-algorithm-8938dcea56ea
-            return (GraphPath<String, Market>) e.getCycle();
-        }
+    private List<GraphPath<String, Market>> findArbitrageForSecurity() {
+//        try {
+//            return new BellmanFordShortestPath<>(exchangeRates)
+//                    .getPath(s, s);
+//        } catch (NegativeCycleDetectedException e) {
+//            // This is what we are looking for.
+//            // https://medium.com/@anilpai/currency-arbitrage-using-bellman-ford-algorithm-8938dcea56ea
+//            return (GraphPath<String, Market>) e.getCycle();
+//        }
+
+        // TODO compare with BellmanFord and check out other simple cycle algos
+        List<GraphPath<String, Market>> paths = new SzwarcfiterLauerSimpleCycles<>(exchangeRates)
+                .findSimpleCycles()
+                .stream()
+                .filter(c -> c.size() >= 3)
+                .filter(c -> c.size() <= 5)
+                .map(this::createPathFromVList)
+                .collect(Collectors.toList());
+
+
+        return paths;
+    }
+
+    private GraphPath<String, Market> createPathFromVList(List<String> cycle) {
+        cycle.add(cycle.get(0));
+        return new GraphWalk<>(exchangeRates, cycle, 10);
     }
 
 
     public void report(TradeChain tradeChain) {
         if (tradeChain.getProfitability().compareTo(new BigDecimal(0)) == 0) {
+            LOGGER.info("Trade chain has 0 profitablity: {}", tradeChain.ilustratePath());
             return;
         }
 
