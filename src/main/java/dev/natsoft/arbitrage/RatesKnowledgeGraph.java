@@ -145,7 +145,6 @@ public class RatesKnowledgeGraph {
         String profitability = Constants.DF.format(
                 tradeChain.getProfitability()
                         .subtract(new BigDecimal(1))
-                        .multiply(new BigDecimal(100))
         );
 
         String message = String.format("Arbitrage detected: profit: %s, trades: %s",
@@ -174,7 +173,7 @@ public class RatesKnowledgeGraph {
     }
 
     public void registerTickerStream(Observable<Boolean> ticks) {
-        ticks.debounce(50, TimeUnit.MILLISECONDS)
+        ticks.debounce(100, TimeUnit.MILLISECONDS)
                 .subscribe(__ -> detectArbitrage());
     }
 
