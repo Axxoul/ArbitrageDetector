@@ -12,6 +12,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static java.lang.Math.max;
+
 /**
  * Facade for accessing all information about the current state of assets and orders.
  */
@@ -24,7 +26,7 @@ public class AssetsManager {
     private BigDecimal lastUSD;
 
     public AssetsManager(RatesKnowledgeGraph ratesKnowledgeGraph) {
-        reports = new ArrayList<>();
+        reports = TradeReport.readReportHistory();
         tradesLeft = 2;
         lastUSD = new BigDecimal(0);
         startUSD = new BigDecimal(0);
@@ -81,8 +83,8 @@ public class AssetsManager {
                 .average()
                 .orElse(1);
 
-//        BigDecimal threshold = BigDecimal.valueOf(max(avgExpectedProfit - avgActualProfit + 1, 1.001));
-        BigDecimal threshold = BigDecimal.valueOf(0.992); // for quick testing
+        BigDecimal threshold = BigDecimal.valueOf(max(avgExpectedProfit - avgActualProfit + 1, 1.001));
+//        BigDecimal threshold = BigDecimal.valueOf(0.992); // for quick testing
 
         LOGGER.info("Threshold: {}, TradeChain: {}", Constants.DF.format(threshold), tradeChain.ilustratePath());
 

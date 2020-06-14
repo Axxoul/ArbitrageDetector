@@ -25,13 +25,13 @@ public class TradeChain {
      * @return final profitability after fees as a multiplier (eg. 1.001)
      */
     public BigDecimal getProfitability() {
-        if (profitability == null) {
-            profitability = path.getEdgeList()
-                    .stream()
-                    .map(Market::getRateWithFees)
-                    .reduce(BigDecimal::multiply)
-                    .orElse(new BigDecimal(0));
-        }
+//        if (profitability == null) {
+        profitability = path.getEdgeList()
+                .stream()
+                .map(Market::getRateWithFees)
+                .reduce(BigDecimal::multiply)
+                .orElse(new BigDecimal(0));
+//        }
         return profitability;
     }
 

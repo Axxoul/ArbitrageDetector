@@ -4,6 +4,8 @@ import dev.natsoft.arbitrage.exchanges.Exchange;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
+import java.time.Duration;
+import java.time.Instant;
 
 public class Market {
     public final String from;
@@ -11,6 +13,7 @@ public class Market {
     public final Exchange exchange;
     private BigDecimal rate;
     private BigDecimal price;
+    private Instant lastUpdateTimestamp;
 
     public Market(String from, String to, Exchange exchange) {
         this.from = from;
@@ -23,6 +26,7 @@ public class Market {
     }
 
     public Market setPrice(BigDecimal price) {
+        this.lastUpdateTimestamp = Instant.now();
         this.price = price;
         return this;
     }
@@ -32,12 +36,19 @@ public class Market {
     }
 
     public Market setRate(BigDecimal rate) {
+        this.lastUpdateTimestamp = Instant.now();
         this.rate = rate;
         return this;
     }
 
     public BigDecimal getRateWithFees() {
-        return rate.multiply(new BigDecimal(1).subtract(exchange.getTakerFee())); // we will pay the taker fee to place this market order
+        BigDecimal outRate = rate;
+        if (Duration.between(lastUpdateTimestamp, Instant.now()).getSeconds() > 10)
+            outRate = BigDecimal.valueOf(0);
+
+        return outRate.multiply(
+                new BigDecimal(1)
+                        .subtract(exchange.getTakerFee())); // we will pay the taker fee to place a market order
     }
 
     @Override

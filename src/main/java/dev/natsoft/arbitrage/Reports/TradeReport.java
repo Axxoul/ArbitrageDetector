@@ -14,6 +14,8 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -46,6 +48,10 @@ public class TradeReport {
                 .stream()
                 .map(Objects::toString)
                 .collect(Collectors.joining(","));
+    }
+
+    public static List<TradeReport> readReportHistory() {
+        return new ArrayList<>();
     }
 
     public TradeReport logReport() {
