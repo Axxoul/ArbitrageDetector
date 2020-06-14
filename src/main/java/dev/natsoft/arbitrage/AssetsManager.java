@@ -21,42 +21,26 @@ public class AssetsManager {
     private final List<TradeReport> reports;
     private BigDecimal startUSD;
     private int tradesLeft;
+    private BigDecimal lastUSD;
 
     public AssetsManager(RatesKnowledgeGraph ratesKnowledgeGraph) {
-        this.ratesKnowledgeGraph = ratesKnowledgeGraph;
-        this.ratesKnowledgeGraph.getBestTradesStream().subscribe(this::receiveBestTrade);
         reports = new ArrayList<>();
-        this.tradesLeft = 50;
+        tradesLeft = 2;
+        lastUSD = new BigDecimal(0);
+        startUSD = new BigDecimal(0);
 
+        this.ratesKnowledgeGraph = ratesKnowledgeGraph;
+        this.ratesKnowledgeGraph.getBestTradesStream()
+                .map(this::modifyChainToStartFromUSD)
+                .filter(this::shouldExecute)
+                .map(SimpleMarketTradeExecutor::new)
+                .mapOptional(SimpleMarketTradeExecutor::execute)
+                .subscribe(this::reportTrades);
     }
 
-    public void receiveBestTrade(TradeChain tradeChain) {
-        modifyChainToStartFromUSD(tradeChain);
-
-        if (!shouldExecute(tradeChain))
-            return;
-
-        try {
-            SimpleMarketTradeExecutor te = new SimpleMarketTradeExecutor(tradeChain);
-            te.execute();
-            reportTrades(te);
-            if (startUSD == null) {
-                startUSD = te.getInitialUSD();
-            }
-            if (te.getFinalUSD().compareTo(startUSD.subtract(new BigDecimal(10))) < 0) {
-                LOGGER.warn("Lost more than 10 USD, exit");
-                System.exit(0);
-            }
-        } catch (Exception e) {
-            LOGGER.error(e.getMessage(), e);
-        }
-
-        tradesLeft -= 1;
-    }
-
-    private void modifyChainToStartFromUSD(TradeChain tradeChain) {
+    private TradeChain modifyChainToStartFromUSD(TradeChain tradeChain) {
         if (!tradeChain.ilustratePath().contains("USD"))
-            return;
+            return tradeChain;
 
         List<Market> markets = tradeChain.path.getEdgeList();
 
@@ -66,11 +50,16 @@ public class AssetsManager {
             markets.add(0, m);
             startAsset = markets.get(0).from;
         }
+
+        return tradeChain;
     }
 
     private boolean shouldExecute(TradeChain tradeChain) {
-        if (tradesLeft == 0)
+        if (tradesLeft == 0) {
+            LOGGER.info("Trade count finished, exiting");
             System.exit(0);
+        }
+
 
         if (!tradeChain.ilustratePath().contains("USD"))
             return false;
@@ -92,21 +81,36 @@ public class AssetsManager {
                 .average()
                 .orElse(1);
 
-        BigDecimal threshold = new BigDecimal(avgExpectedProfit - avgActualProfit + 0.993);
+//        BigDecimal threshold = BigDecimal.valueOf(max(avgExpectedProfit - avgActualProfit + 1, 1.001));
+        BigDecimal threshold = BigDecimal.valueOf(0.992); // for quick testing
 
         LOGGER.info("Threshold: {}, TradeChain: {}", Constants.DF.format(threshold), tradeChain.ilustratePath());
 
         if (tradeChain.getProfitability().compareTo(threshold) < 0)
             return false;
 
+        if (lastUSD.compareTo(startUSD.subtract(new BigDecimal(10))) < 0) {
+            LOGGER.warn("Lost more than 10 USD, exit");
+            System.exit(0);
+        }
+
         return true;
     }
 
     private void reportTrades(SimpleMarketTradeExecutor te) throws IOException {
-        reports.add(0,
-                new TradeReport(te)
-                        .saveReport()
-                        .logReport()
-        );
+        tradesLeft -= 1;
+
+        if (startUSD.compareTo(new BigDecimal(0)) == 0) {
+            startUSD = te.getInitialUSD();
+        }
+
+        lastUSD = te.getFinalUSD();
+
+        TradeReport report = new TradeReport(te)
+                .saveReport()
+                .logReport();
+
+        reports.add(0, report);
+
     }
 }

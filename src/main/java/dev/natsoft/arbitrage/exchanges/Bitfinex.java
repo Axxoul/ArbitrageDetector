@@ -6,6 +6,7 @@ import com.github.jnidzwetzki.bitfinex.v2.BitfinexWebsocketClient;
 import com.github.jnidzwetzki.bitfinex.v2.BitfinexWebsocketConfiguration;
 import com.github.jnidzwetzki.bitfinex.v2.entity.*;
 import com.github.jnidzwetzki.bitfinex.v2.entity.currency.BitfinexCurrencyPair;
+import com.github.jnidzwetzki.bitfinex.v2.exception.BitfinexClientException;
 import com.github.jnidzwetzki.bitfinex.v2.manager.QuoteManager;
 import com.github.jnidzwetzki.bitfinex.v2.symbol.BitfinexAccountSymbol;
 import com.github.jnidzwetzki.bitfinex.v2.symbol.BitfinexSymbols;
@@ -14,7 +15,10 @@ import dev.natsoft.arbitrage.ArbitrageDetector;
 import dev.natsoft.arbitrage.Constants;
 import dev.natsoft.arbitrage.RatesKnowledgeGraph;
 import dev.natsoft.arbitrage.model.Market;
+import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Observable;
+import io.reactivex.rxjava3.processors.PublishProcessor;
+import io.reactivex.rxjava3.schedulers.Schedulers;
 import io.reactivex.rxjava3.subjects.PublishSubject;
 import io.reactivex.rxjava3.subjects.Subject;
 import org.slf4j.Logger;
@@ -24,12 +28,15 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.Collection;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 public class Bitfinex implements Exchange {
     private static final Logger LOGGER = LoggerFactory.getLogger(ArbitrageDetector.class);
 
-    private final Subject<Boolean> ticks;
+    private final PublishProcessor<String> ticksProcessor;
+    private final Flowable<String> ticks;
     private final Subject<BigDecimal> USDUpdates;
+    private final PublishSubject<BitfinexSubmittedOrder> orderUpdates;
 
     private boolean busy;
     private BitfinexWebsocketClient privateClient;
@@ -37,8 +44,14 @@ public class Bitfinex implements Exchange {
     private RatesKnowledgeGraph ratesKnowledgeGraph;
 
     public Bitfinex() {
-        this.ticks = PublishSubject.create();
+        ticksProcessor = PublishProcessor.create();
+        this.ticks = ticksProcessor.onBackpressureDrop();
+        ticks.buffer(10, TimeUnit.SECONDS).subscribe(l -> {
+            LOGGER.info("In last 10s got ticker {} updates: {}", l.size(), l);
+        });
+
         this.USDUpdates = PublishSubject.create();
+        this.orderUpdates = PublishSubject.create();
 
         this.busy = false;
     }
@@ -55,7 +68,7 @@ public class Bitfinex implements Exchange {
                 });
     }
 
-    public Observable<Boolean> getTickerStream() {
+    public Flowable<String> getTickerStream() {
         return ticks;
     }
 
@@ -78,12 +91,6 @@ public class Bitfinex implements Exchange {
         privateClient = BitfinexClientFactory.newPooledClient(config, 20);
         privateClient.connect();
 
-        LOGGER.info("=== Orders ===");
-        privateClient.getOrderManager().getOrders().forEach(or -> {
-            LOGGER.info("= {}", or);
-
-        });
-
         LOGGER.info("=== Balances ===");
         privateClient.getWalletManager()
                 .getWallets()
@@ -92,7 +99,10 @@ public class Bitfinex implements Exchange {
                     bal = bal != null ? bal : new BigDecimal(0);
                     LOGGER.info("= {} : {}", wal.getCurrency(), Constants.DF.format(bal));
                 });
+
         privateClient.getCallbacks().onMyWalletEvent(this::handleWalletUpdate);
+        privateClient.getCallbacks().onMySubmittedOrderEvent((a, e) -> e.forEach(i -> publishOrderUpdate(a, i)));
+        privateClient.getCallbacks().onMyOrderNotification(this::publishOrderUpdate);
 
         publicClient = BitfinexClientFactory.newPooledClient();
         publicClient.connect();
@@ -106,19 +116,23 @@ public class Bitfinex implements Exchange {
         busy = false;
     }
 
+    private void publishOrderUpdate(BitfinexAccountSymbol bitfinexAccountSymbol, BitfinexSubmittedOrder bitfinexSubmittedOrder) {
+        orderUpdates.onNext(bitfinexSubmittedOrder);
+    }
+
     @Override
     public BigDecimal getTakerFee() {
-        return new BigDecimal("0.00207") // 0.2% with 0.005% wiggle room to avoid INSUFFICIENT BALANCE (U1) was: PARTIALLY FILLED @ 0.00095551(-142.55525736)
+        return new BigDecimal("0.00200") // 0.2% with 0.005% wiggle room to avoid INSUFFICIENT BALANCE (U1) was: PARTIALLY FILLED @ 0.00095551(-142.55525736)
 //                .multiply(new BigDecimal(1)
 //                        .subtract(new BigDecimal("0.15"))) // 15% off for LEO holders
                 ;
     }
 
     @Override
-    public BitfinexSubmittedOrder trade(Market market, BigDecimal sourceAmount) throws Exception {
+    public BitfinexSubmittedOrder trade(Market market, BigDecimal sourceAmount) {
         if (busy) {
             LOGGER.warn("Bitfinex client too busy to trade.");
-            throw new Exception("Bitfinex client too busy");
+            throw new BitfinexClientException("Bitfinex client too busy");
         }
 
         busy = true;
@@ -145,14 +159,21 @@ public class Bitfinex implements Exchange {
 
         privateClient.getOrderManager().placeOrder(order);
 
-        BitfinexSubmittedOrder submittedOrder = waitForOrder(order);
+        BitfinexSubmittedOrder submittedOrder = orderUpdates
+                .observeOn(Schedulers.io())
+                .filter(so -> so.getClientId() == order.getClientId())
+                .filter(so -> so.getStatus() == BitfinexSubmittedOrderStatus.EXECUTED
+                        || so.getStatus() == BitfinexSubmittedOrderStatus.CANCELED
+                        || so.getStatus() == BitfinexSubmittedOrderStatus.ERROR)
+                .blockingFirst();
+
         LOGGER.info("Order finished: {}", submittedOrder);
+
         if (submittedOrder.getStatus() == BitfinexSubmittedOrderStatus.ERROR) {
             busy = false;
-            throw new Exception(submittedOrder.getStatusDescription());
+            throw new BitfinexClientException(submittedOrder.getStatusDescription());
         }
 
-        Thread.sleep(100); // Websocket crashes for some reason
         busy = false;
         return submittedOrder;
     }
@@ -169,32 +190,8 @@ public class Bitfinex implements Exchange {
                 .orElse(new BigDecimal(0));
     }
 
-    private BitfinexSubmittedOrder waitForOrder(BitfinexNewOrder order) {
-        BitfinexSubmittedOrder submittedOrder = null;
-
-        while (submittedOrder == null) {
-            submittedOrder = privateClient.getOrderManager().getOrders()
-                    .stream()
-                    .filter(so -> so.getClientId() == order.getClientId())
-                    .filter(so -> so.getStatus() == BitfinexSubmittedOrderStatus.EXECUTED
-                            || so.getStatus() == BitfinexSubmittedOrderStatus.CANCELED)
-                    .findAny()
-                    .orElse(null);
-
-            if (submittedOrder == null) {
-                try {
-                    Thread.sleep(50);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-
-        return submittedOrder;
-    }
-
     private void watchInstrument(BitfinexCurrencyPair pair) {
-        LOGGER.info("Watching {}", pair);
+        LOGGER.debug("Watching {}", pair);
         final QuoteManager quoteManager = publicClient.getQuoteManager();
         final BitfinexTickerSymbol symbol = BitfinexSymbols.ticker(pair);
 
@@ -209,19 +206,19 @@ public class Bitfinex implements Exchange {
             BigDecimal reverseRate = new BigDecimal(1).divide(tick.getAsk(), 100, RoundingMode.HALF_DOWN);
             BigDecimal spreadRate = new BigDecimal(1).subtract(rate.multiply(reverseRate)).multiply(new BigDecimal(100));
 
-            LOGGER.info(String.format("[%s] spread rate: %s, vol: %s",
+            LOGGER.debug(String.format("[%s] spread rate: %s, vol: %s",
                     symbol.getCurrency(),
                     Constants.DF.format(spreadRate),
                     Constants.DF.format(vol)
             ));
 
-            if (tick.getVolume().compareTo(new BigDecimal(4000)) < 0
-                    || spreadRate.compareTo(new BigDecimal("1.5")) > 0) {
+            if (tick.getVolume().compareTo(new BigDecimal(15000)) < 0
+                    || spreadRate.compareTo(new BigDecimal("0.7")) > 0) {
                 publicClient.getQuoteManager().unsubscribeTicker(symbol);
-                LOGGER.info("Dropping {} for spread or volume thresholds", symbol);
+                LOGGER.debug("Dropping {} for spread or volume thresholds", symbol);
                 return;
             }
-            ticks.onNext(true);
+            ticksProcessor.onNext(symbol.getCurrency().toBitfinexString());
 
             LOGGER.debug(String.format("[%s] (bid: %s, ask: %s, spread: %s)",
                     symbol.getCurrency(),

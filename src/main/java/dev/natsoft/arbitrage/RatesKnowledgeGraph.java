@@ -3,7 +3,9 @@ package dev.natsoft.arbitrage;
 import ch.obermuhlner.math.big.BigDecimalMath;
 import dev.natsoft.arbitrage.model.Market;
 import dev.natsoft.arbitrage.model.TradeChain;
+import io.reactivex.rxjava3.core.Flowable;
 import io.reactivex.rxjava3.core.Observable;
+import io.reactivex.rxjava3.schedulers.Schedulers;
 import io.reactivex.rxjava3.subjects.PublishSubject;
 import io.reactivex.rxjava3.subjects.Subject;
 import org.jgrapht.Graph;
@@ -20,10 +22,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.time.Instant;
-import java.util.Comparator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
@@ -34,17 +33,12 @@ public class RatesKnowledgeGraph {
     private static final Logger LOGGER = LoggerFactory.getLogger(RatesKnowledgeGraph.class);
     private static Graph<String, Market> exchangeRates;
     private final ReentrantLock graphLock;
-    private final Subject<TradeChain> bestTradesStream;
-    private TradeChain bestTrades;
+    private Subject<TradeChain> bestTradesStream;
 
     public RatesKnowledgeGraph() {
         exchangeRates = new DefaultDirectedWeightedGraph<>(Market.class);
         graphLock = new ReentrantLock();
         bestTradesStream = PublishSubject.create();
-    }
-
-    public TradeChain getBestTrades() {
-        return bestTrades;
     }
 
     public void updateSecurity(Market rate) {
@@ -87,22 +81,25 @@ public class RatesKnowledgeGraph {
         graphLock.unlock();
     }
 
-    public void detectArbitrage() {
+    public Optional<TradeChain> detectArbitrage(String tickerSymbol) {
         graphLock.lock();
 
-        findArbitrageForSecurity().stream()
+        Optional<TradeChain> tradeChain = findArbitrageForSecurity().stream()
 //        exchangeRates
 //                .vertexSet()
 //                .stream()
 //                .map(this::findArbitrageForSecurity)
 //                .flatMap(List::stream)
                 .map(TradeChain::new)
-                .filter(tradeChain -> tradeChain.ilustratePath().contains("USD"))
+                .filter(tc -> tc.ilustratePath().contains("USD"))
 //                .filter(TradeChain::meetsThreshold)
-                .max(Comparator.comparing(TradeChain::getProfitability))
-                .ifPresent(this::report);
+                .max(Comparator.comparing(TradeChain::getProfitability));
+//                .ifPresent(this::report);
+
 
         graphLock.unlock();
+
+        return tradeChain;
     }
 
     private List<GraphPath<String, Market>> findArbitrageForSecurity() {
@@ -120,7 +117,8 @@ public class RatesKnowledgeGraph {
                 .findSimpleCycles()
                 .stream()
                 .filter(c -> c.size() >= 3)
-                .filter(c -> c.size() <= 5)
+                .filter(c -> c.size() <= 4)
+                .filter(c -> !c.contains("LEO"))
                 .map(this::createPathFromVList)
                 .collect(Collectors.toList());
 
@@ -134,13 +132,11 @@ public class RatesKnowledgeGraph {
     }
 
 
-    public void report(TradeChain tradeChain) {
+    public Optional<TradeChain> report(TradeChain tradeChain) {
         if (tradeChain.getProfitability().compareTo(new BigDecimal(0)) == 0) {
             LOGGER.info("Trade chain has 0 profitablity: {}", tradeChain.ilustratePath());
-            return;
+            return Optional.empty();
         }
-
-        bestTrades = tradeChain;
 
         String profitability = Constants.DF.format(
                 tradeChain.getProfitability()
@@ -169,12 +165,20 @@ public class RatesKnowledgeGraph {
             e.printStackTrace();
         }
 
-        bestTradesStream.onNext(tradeChain);
+        return Optional.of(tradeChain);
     }
 
-    public void registerTickerStream(Observable<Boolean> ticks) {
-        ticks.debounce(100, TimeUnit.MILLISECONDS)
-                .subscribe(__ -> detectArbitrage());
+    public void registerTickerStream(Flowable<String> ticks) {
+        ticks
+                .debounce(100, TimeUnit.MILLISECONDS)
+                .onBackpressureDrop()
+                .observeOn(Schedulers.io(), true, 1)
+                .mapOptional(this::detectArbitrage)
+                .mapOptional(this::report)
+                .subscribe(
+                        bestTradesStream::onNext,
+                        e -> LOGGER.error(e.getMessage(), e)
+                );
     }
 
     public Observable<TradeChain> getBestTradesStream() {
