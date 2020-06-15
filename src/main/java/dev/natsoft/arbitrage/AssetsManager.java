@@ -8,7 +8,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -27,7 +26,7 @@ public class AssetsManager {
 
     public AssetsManager(RatesKnowledgeGraph ratesKnowledgeGraph) {
         reports = TradeReport.readReportHistory();
-        tradesLeft = 2;
+        tradesLeft = 50;
         lastUSD = new BigDecimal(0);
         startUSD = new BigDecimal(0);
 

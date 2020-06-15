@@ -117,7 +117,7 @@ public class RatesKnowledgeGraph {
                 .findSimpleCycles()
                 .stream()
                 .filter(c -> c.size() >= 3)
-                .filter(c -> c.size() <= 4)
+                .filter(c -> c.size() <= 5)
                 .filter(c -> !c.contains("LEO"))
                 .map(this::createPathFromVList)
                 .collect(Collectors.toList());
@@ -148,7 +148,7 @@ public class RatesKnowledgeGraph {
                 tradeChain.ilustratePath()
         );
 
-        LOGGER.warn(message);
+        LOGGER.info(message);
 
         try {
             File file = new File("tmp/arbitrage.csv");

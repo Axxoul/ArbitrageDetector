@@ -108,9 +108,14 @@ public class Bitfinex implements Exchange {
         publicClient.connect();
 
         LOGGER.info("Starting tickers subscriptsions");
-        for (BitfinexCurrencyPair pair : BitfinexCurrencyPair.values()) {
-            watchInstrument(pair);
-        }
+        BitfinexCurrencyPair.values()
+                .stream()
+                .filter(p -> !p.toBitfinexString().contains("CNH")) // Stupid Bitfinex lists invalid markets
+                .filter(p -> !p.toBitfinexString().contains("DUSK"))
+                .filter(p -> !p.toBitfinexString().contains("XAU"))
+                .filter(p -> !p.toBitfinexString().contains("USTF0"))
+                .filter(p -> !p.toBitfinexString().contains("RING"))
+                .forEach(this::watchInstrument);
         LOGGER.info("Done subscribing to tickers");
 
         busy = false;
@@ -212,8 +217,8 @@ public class Bitfinex implements Exchange {
                     Constants.DF.format(vol)
             ));
 
-            if (tick.getVolume().compareTo(new BigDecimal(15000)) < 0
-                    || spreadRate.compareTo(new BigDecimal("0.7")) > 0) {
+            if (tick.getVolume().compareTo(new BigDecimal(3000)) < 0
+                    || spreadRate.compareTo(new BigDecimal("1.5")) > 0) {
                 publicClient.getQuoteManager().unsubscribeTicker(symbol);
                 LOGGER.debug("Dropping {} for spread or volume thresholds", symbol);
                 return;

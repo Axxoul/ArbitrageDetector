@@ -1,6 +1,9 @@
 package dev.natsoft.arbitrage.model;
 
 import dev.natsoft.arbitrage.exchanges.Exchange;
+import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
@@ -8,9 +11,12 @@ import java.time.Duration;
 import java.time.Instant;
 
 public class Market {
+    private static final Logger LOGGER = LoggerFactory.getLogger(Market.class);
+    private static final int FRESHNESS_SECONDS = 60;
     public final String from;
     public final String to;
     public final Exchange exchange;
+    private final DescriptiveStatistics updateTimeStatistics = new DescriptiveStatistics();
     private BigDecimal rate;
     private BigDecimal price;
     private Instant lastUpdateTimestamp;
@@ -19,6 +25,29 @@ public class Market {
         this.from = from;
         this.to = to;
         this.exchange = exchange;
+        this.lastUpdateTimestamp = Instant.now();
+    }
+
+    public Instant getLastUpdateTimestamp() {
+        return lastUpdateTimestamp;
+    }
+
+    private void updateTimestamp() {
+        Instant prevUpdate = lastUpdateTimestamp;
+        Instant currentUpdate = Instant.now();
+        lastUpdateTimestamp = currentUpdate;
+        long secondsSinceLastUpdate = Duration.between(prevUpdate, currentUpdate).getSeconds();
+        if (secondsSinceLastUpdate != 0) {
+            updateTimeStatistics.addValue(secondsSinceLastUpdate);
+        }
+
+        if (secondsSinceLastUpdate > FRESHNESS_SECONDS)
+            LOGGER.warn("Outdated update: {}->{} after {}s. Statistics: 50p,75p,95p: {},{},{}",
+                    from, to, secondsSinceLastUpdate,
+                    updateTimeStatistics.getPercentile(50),
+                    updateTimeStatistics.getPercentile(75),
+                    updateTimeStatistics.getPercentile(95)
+            );
     }
 
     public BigDecimal getPrice() {
@@ -26,7 +55,7 @@ public class Market {
     }
 
     public Market setPrice(BigDecimal price) {
-        this.lastUpdateTimestamp = Instant.now();
+        updateTimestamp();
         this.price = price;
         return this;
     }
@@ -36,14 +65,14 @@ public class Market {
     }
 
     public Market setRate(BigDecimal rate) {
-        this.lastUpdateTimestamp = Instant.now();
+        updateTimestamp();
         this.rate = rate;
         return this;
     }
 
     public BigDecimal getRateWithFees() {
         BigDecimal outRate = rate;
-        if (Duration.between(lastUpdateTimestamp, Instant.now()).getSeconds() > 10)
+        if (Duration.between(lastUpdateTimestamp, Instant.now()).getSeconds() > FRESHNESS_SECONDS)
             outRate = BigDecimal.valueOf(0);
 
         return outRate.multiply(
