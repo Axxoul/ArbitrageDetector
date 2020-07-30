@@ -2,4 +2,4 @@
 
 todo readme
 
-tldr make $$$ from arbitrage
+tldr make $$$ from crypto arbitrage
